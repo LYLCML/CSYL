@@ -161,7 +161,7 @@ class Encoder(nn.Module):
             return self.center, self.center
 
 
-class CSSRClassifier(nn.Module):
+class CSYLClassifier(nn.Module):
 
     def __init__(self, inchannels, num_class, config):
         super().__init__()
@@ -175,7 +175,7 @@ class CSSRClassifier(nn.Module):
         self.class_enc = nn.ModuleList(self.class_enc)
         # self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.useL1 = config['error_measure'] == 'L1'
-        self.reduction = -1 if config['model'] == 'pcssr' else 1
+        self.reduction = -1 if config['model'] == 'pCSYL' else 1
         self.reduction *= config['gamma']
         # 每个类别的原型，初始化为随机值
         self.prototypes = nn.Parameter(torch.randn(num_class, ae_latent, ae_H_W, ae_H_W))
@@ -238,10 +238,10 @@ class CSSRClassifier(nn.Module):
             lt = self.class_enc[c](x)
             cls_er = self.prototypes_error(lt, self.prototypes[c])
             cls_er1 = self.prototypes_error1(lt, self.prototypes1[c])
-            if CSSRClassifier.clip_len > 0:
-                cls_er = torch.clamp(cls_er, -CSSRClassifier.clip_len, CSSRClassifier.clip_len)
-            if CSSRClassifier.clip_len > 0:
-                cls_er1 = torch.clamp(cls_er1, -CSSRClassifier.clip_len, CSSRClassifier.clip_len)
+            if CSYLClassifier.clip_len > 0:
+                cls_er = torch.clamp(cls_er, -CSYLClassifier.clip_len, CSYLClassifier.clip_len)
+            if CSYLClassifier.clip_len > 0:
+                cls_er1 = torch.clamp(cls_er1, -CSYLClassifier.clip_len, CSYLClassifier.clip_len)
             cls_ers.append(cls_er)
             cls_ers1.append(cls_er1)
         pull_loss_t = torch.tensor(0)
@@ -262,7 +262,7 @@ class BackboneAndClassifier(nn.Module):
 
     def __init__(self, num_classes, config):
         super().__init__()
-        clsblock = {'linear': LinearClassifier, 'pcssr': CSSRClassifier, 'rcssr': CSSRClassifier}
+        clsblock = {'linear': LinearClassifier, 'pCSYL': CSYLClassifier, 'rCSYL': CSYLClassifier}
         self.backbone = Backbone(config, 3)
         cat_config = config['category_model']
         self.cat_cls = clsblock[cat_config['model']](self.backbone.output_dim, num_classes, cat_config)
@@ -275,7 +275,7 @@ class BackboneAndClassifier(nn.Module):
         return x, logic,logic1, lossp
 
 
-class CSSRModel(nn.Module):
+class CSYLModel(nn.Module):
 
     def __init__(self, num_classes, config, crt):
         super().__init__()
@@ -321,7 +321,7 @@ class CSSRModel(nn.Module):
         return xcls,xcls1
 
 
-class CSSRCriterion(nn.Module):
+class CSYLCriterion(nn.Module):
     def get_onehot_label(self, y, clsnum):
         y = torch.reshape(y, [-1, 1]).long()
         return torch.zeros(y.shape[0], clsnum).cuda().scatter_(1, y, 1)
@@ -414,8 +414,8 @@ class WrapDataset(data.Dataset):
         return img, lb, index
 
 
-@util.regmethod('cssr')
-class CSSRMethod:
+@util.regmethod('CSYL')
+class CSYLMethod:
 
     def get_cfg(self, key, default):
         return self.config[key] if key in self.config else default
@@ -426,8 +426,8 @@ class CSSRMethod:
         self.lr = config['learn_rate']
         self.batch_size = config['batch_size']
         self.clsnum = clssnum
-        self.crt = CSSRCriterion(config['arch_type'], False)
-        self.model = CSSRModel(self.clsnum, config, self.crt).cuda()
+        self.crt = CSYLCriterion(config['arch_type'], False)
+        self.model = CSYLModel(self.clsnum, config, self.crt).cuda()
         self.modelopt = torch.optim.SGD(self.model.parameters(), lr=self.lr, weight_decay=5e-4)
         self.wrap_ds = WrapDataset(train_set, self.config, inchan_num=3, )
         self.wrap_loader = data.DataLoader(self.wrap_ds,
